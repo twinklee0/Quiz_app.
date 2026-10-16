@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Quiz Application</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<div class="quiz-container">
+
+    <h1>Quiz Application</h1>
+    <p class="subtitle">Test your knowledge!</p>
+
+    <div class="progress">
+        <span id="progress">Question 1 of 10</span>
+        <span id="score">Score: 0</span>
+    </div>
+
+    <div class="timer">
+        Time left: <span id="time">15</span>s
+    </div>
+
+    <h2 id="question"></h2>
+
+    <div id="options"></div>
+
+    <p id="feedback" role="status"></p>
+
+    <button id="next" disabled>Next Question</button>
+
+    <div id="result" hidden>
+        <h2>Quiz Completed!</h2>
+        <p id="final-score"></p>
+        <button id="restart">Play Again</button>
+    </div>
+
+</div>
+
+<script>
+const questions = {{ questions | tojson }};
+
+let current = 0;
+let score = 0;
+let timeLeft = 15;
+let timer = null;
+let answered = false;
+
+const questionElement = document.getElementById("question");
+const optionsElement = document.getElementById("options");
+const feedbackElement = document.getElementById("feedback");
+const nextButton = document.getElementById("next");
+
+function showQuestion() {
+    clearInterval(timer);
+
+    answered = false;
+    timeLeft = 15;
+
+    document.getElementById("time").textContent = timeLeft;
+    document.getElementById("progress").textContent =
+        `Question ${current + 1} of ${questions.length}`;
+
+    document.getElementById("score").textContent =
+        `Score: ${score}`;
+
+    feedbackElement.textContent = "";
+    nextButton.disabled = true;
+
+    questionElement.textContent = questions[current].question;
+    optionsElement.innerHTML = "";
+
+    nextButton.textContent =
+        current === questions.length - 1
+            ? "See Results"
+            : "Next Question";
+
+    questions[current].options.forEach((option, index) => {
+        const button = document.createElement("button");
+
+        button.className = "option";
+        button.textContent =
+            `${String.fromCharCode(65 + index)}. ${option}`;
+
+        button.addEventListener("click", () => {
+            checkAnswer(index, button);
+        });
+
+        optionsElement.appendChild(button);
+    });
+
+    timer = setInterval(() => {
+        timeLeft--;
+
+        document.getElementById("time").textContent = timeLeft;
+
+        if (timeLeft <= 0) {
+            clearInterval(timer);
+
+            if (!answered) {
+                answered = true;
+                feedbackElement.textContent = "Time's up!";
+                disableOptions();
+                nextButton.disabled = false;
+            }
+        }
+    }, 1000);
+}
+
+async function checkAnswer(index, selectedButton) {
+    if (answered) return;
+
+    answered = true;
+    clearInterval(timer);
+    disableOptions();
+
+    feedbackElement.textContent =
+        "Checking answer using Verilog...";
+
+    try {
+        const response = await fetch("/check", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                question: current,
+                answer: index
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Answer check failed.");
+        }
+
+        if (data.correct) {
+            score++;
+            selectedButton.classList.add("correct");
+
+            feedbackElement.textContent = "Correct answer!";
+        } else {
+            selectedButton.classList.add("wrong");
+
+            feedbackElement.textContent = "Incorrect answer!";
+        }
+
+        document.getElementById("score").textContent =
+            `Score: ${score}`;
+
+        nextButton.disabled = false;
+
+    } catch (error) {
+        feedbackElement.textContent =
+            "Error: " + error.message;
+
+        nextButton.disabled = false;
+    }
+}
+
+function disableOptions() {
+    document.querySelectorAll(".option").forEach(button => {
+        button.disabled = true;
+    });
+}
+
+nextButton.addEventListener("click", () => {
+    if (current < questions.length - 1) {
+        current++;
+        showQuestion();
+    } else {
+        showResult();
+    }
+});
+
+function showResult() {
+    clearInterval(timer);
+
+    questionElement.hidden = true;
+    optionsElement.hidden = true;
+    nextButton.hidden = true;
+
+    document.querySelector(".timer").hidden = true;
+    document.querySelector(".progress").hidden = true;
+    feedbackElement.hidden = true;
+
+    document.getElementById("result").hidden = false;
+
+    document.getElementById("final-score").textContent =
+        `Your score is ${score} out of ${questions.length}.`;
+}
+
+function restartQuiz() {
+    current = 0;
+    score = 0;
+
+    questionElement.hidden = false;
+    optionsElement.hidden = false;
+    nextButton.hidden = false;
+
+    document.querySelector(".timer").hidden = false;
+    document.querySelector(".progress").hidden = false;
+    feedbackElement.hidden = false;
+
+    document.getElementById("result").hidden = true;
+
+    showQuestion();
+}
+
+document.getElementById("restart").addEventListener(
+    "click",
+    restartQuiz
+);
+
+showQuestion();
+</script>
+
+</body>
+</html>
